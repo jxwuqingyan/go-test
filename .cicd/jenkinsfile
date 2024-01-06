@@ -1,0 +1,107 @@
+pipeline {
+    agent any
+    // agent {
+    //    label 'jenkins-slave-1'
+    // }
+
+    // tools {
+    //     go 'go-v1.16.9'
+    // }
+
+    environment {
+        GITLAB_REPO="http://git.dj.org/dj/go-test.git"
+        GO_PATH="/var/jenkins_home/tools/go"
+        KUBECTL_PATH="/var/jenkins_home/tools/kubectl"
+        KUBE_CONFIG_PATH="/var/jenkins_home/k8s-config/wuqy"
+        BRANCH="main"
+        HARBOR_URL="hub.dj.org"
+        HARBOR_REPO="dj"
+        HARBOR_USER="admin"
+        HARBOR_PASSWORD="niitkevin"
+        IMAGE_NAME="go-test"
+        APP_NAME="go-test"
+        K8S_NAMESPACE="dj"
+        def BUILDVERSION = sh(script: "echo `date +%F-%H%M%S`", returnStdout: true).trim()
+    }
+
+    options {
+        timeout(30)  //设置超时，默认单位：分钟
+        retry(3)     //重试次数
+        buildDiscarder(logRotator(numToKeepStr:'3'))  //保持构建的最大个数
+        timestamps()
+    }
+
+    stages {
+        stage('初始化工作目录') {
+            steps {
+                echo "STEP1: 初始化工作目录"
+                cleanWs()
+        
+            }
+        }
+
+        stage('拉代码') {
+            steps {
+                echo "STEP2: start clone code forom ${GITLAB_REPO}"
+
+                git (
+                    branch:"${BRANCH}",
+                    credentialsId:"0f89722c-98cc-4cc9-ac2e-8c9a285f26a9",
+                    url:"${GITLAB_REPO}",
+                    changelog:true
+                )
+
+                sh("git branch && git log -3")
+            }
+        }
+    
+        stage('项目编译') {
+            steps {
+                echo "STEP3: 项目编译"
+                // sh '${GOPATH}/bin/go build --ldflags "-extldflags -static"'
+                sh("${GO_PATH}/bin/go build")
+            }
+        }
+
+        stage('打包镜像') {
+            steps {
+                echo "STEP3: 打包镜像"
+                sh '''
+                    cat > ${WORKSPACE}/Dockerfile <<EOF
+FROM centos:7.6.1810
+LABEL MAINTAINERS Kevin_Wu
+
+WORKDIR /app
+
+COPY go-test /app/
+
+EXPOSE 8090
+
+ENTRYPOINT ["./go-test"]
+EOF
+                    docker build -t ${HARBOR_URL}/${HARBOR_REPO}/${IMAGE_NAME}:${BUILDVERSION} .
+                '''
+            }
+        }
+
+        stage('推送镜像') {
+            steps {
+                echo "STEP4: 推送镜像到仓库"
+                sh'''
+                    docker login -u ${HARBOR_USER} -p ${HARBOR_PASSWORD} ${HARBOR_URL}
+                    docker push ${HARBOR_URL}/${HARBOR_REPO}/${IMAGE_NAME}:${BUILDVERSION}
+                '''
+            }
+        }
+
+        stage('部署镜像') {
+            steps {
+                echo "STEP4: 部署镜像到k8s"
+                sh'''
+                    ${KUBECTL_PATH} --kubeconfig ${KUBE_CONFIG_PATH} set image deployment/${APP_NAME} ${APP_NAME}=${HARBOR_URL}/${HARBOR_REPO}/${IMAGE_NAME}:${BUILDVERSION} -n ${K8S_NAMESPACE}
+                '''
+            }
+        }
+    
+    }
+}

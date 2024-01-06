@@ -1,0 +1,40 @@
+FROM golang:1.20.12-alpine3.18 AS build-env
+
+WORKDIR /go/src/app
+ADD . /go/src/app
+
+
+RUN go env -w GO111MODULE=on && \
+  go env -w GOINSECURE=nexus.192.168.1.79.nip.io:8081 && \
+  go env -w GOPROXY="http://nexus.192.168.1.79.nip.io:8081/repository/go-public/" && \
+  go env -w GOSUMDB=off && \
+  go env && \
+  go mod download && \
+  GOOS=linux CGO_ENABLED=0 GOARCH=amd64 go build -ldflags="-s -w" -installsuffix cgo -v -o /go/src/app/go-test main.go
+
+
+#FROM centos:7.6.1810 AS final
+FROM alpine:3.18 AS final
+LABEL MAINTAINERS Kevin_Wu
+
+ENV TZ="Asia/Shanghai"
+
+WORKDIR /app
+
+COPY --from=build-env /go/src/app/go-test /app/go-test
+
+RUN set -eux \
+  && cat /etc/apk/repositories \
+  && sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
+  && cat /etc/apk/repositories \
+  && apk update \
+  && apk add --no-cache ca-certificates \
+  && apk add --no-cache busybox-extras curl wget bash bash-completion bash-doc vim tree tzdata net-tools font-adobe-100dpi ttf-dejavu fontconfig unzip tini \
+  && ln -sf /usr/share/zoneinfo/Asia/Shanghai  /etc/localtime
+#RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+#&& echo "https://mirrors.aliyun.com/alpine/v3.18/main/" > /etc/apk/repositories \
+#&& echo "https://mirrors.aliyun.com/alpine/v3.18/community/" >> /etc/apk/repositories \
+
+EXPOSE 8090
+
+ENTRYPOINT ["./go-test"]
