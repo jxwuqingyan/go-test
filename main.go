@@ -9,7 +9,7 @@ import (
         "strconv"
         "fmt"
         // 引用私有包
-        "gitee.com/jxwuqingyan/go-mod-test"
+        //"gitee.com/jxwuqingyan/go-mod-test"
 
 )
 
@@ -34,7 +34,7 @@ func helloHandler(w http.ResponseWriter, r * http.Request) {
     fmt.Println(str)
     loger.Println(str + "this is write to file!") // 使用的时候，需要采用loger作为输出的前缀
     //  引用私有包go-mod-test
-    go-mod-test.Hello()
+    //go-mod-test.Hello()
 }
 
 func main() {
