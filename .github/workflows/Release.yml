@@ -3,7 +3,7 @@ name: Release go-test
 on:
   push:
     tags:
-      - 'v0.*'
+      - 'v*'
       - 'draft-*'
 
 jobs:
